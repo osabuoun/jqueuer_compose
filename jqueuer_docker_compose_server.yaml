@@ -1,0 +1,58 @@
+    version: '2'
+    services:
+        redis:
+            image: "redis:alpine"
+            networks:
+                jqueuer_network:
+
+        statsd:
+            image: prom/statsd-exporter
+            networks:
+                jqueuer_network:
+            ports:
+                - 9125:9125
+                - 9125:9125/udp
+                - 9102:9102
+                - 9102:9102/udp
+
+        rabbit:
+            hostname: rabbit
+            image: rabbitmq:latest
+            environment:
+                - RABBITMQ_DEFAULT_USER=admin
+                - RABBITMQ_DEFAULT_PASS=mypass
+                - RABBITMQ_PLUGINS="rabbitmq_management"
+            networks:
+                jqueuer_network:
+
+        jqueuer_manager:
+            image: osabuoun/jqueuer_manager
+            #image: jqueuer_manager
+            ports:
+                - "8081:8081"
+            networks:
+                jqueuer_network:
+            volumes:
+                - /usr/bin/docker:/usr/bin/docker
+                - /var/run/docker.sock:/var/run/docker.sock
+
+        jqueuer_agent:
+            image: osabuoun/jqueuer_agent
+            #image: jqueuer_agent
+            networks:
+                jqueuer_network:
+            volumes:
+                - /usr/bin/docker:/usr/bin/docker
+                - /var/run/docker.sock:/var/run/docker.sock
+
+    networks:
+        jqueuer_network:
+            # use the bridge driver, but enable IPv6
+            driver: bridge
+            driver_opts:
+                com.docker.network.enable_ipv6: "true"
+            ipam:
+                driver: default
+                config:
+                    - subnet: "192.168.254.0/24"
+                      gateway: "192.168.254.1"

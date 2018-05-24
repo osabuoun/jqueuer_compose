@@ -1,0 +1,192 @@
+version: '2'
+services:
+    syslog_server:
+        image: jumanjiman/rsyslog
+        ports:
+            - 514:514
+            - 514:514/udp
+        networks:
+            jqueuer_network:
+
+    syslog_server_jqagent:
+        image: jumanjiman/rsyslog
+        ports:
+            - 5514:514
+            - 5514:514/udp
+        networks:
+            jqueuer_network:
+
+    syslog_server_service:
+        image: jumanjiman/rsyslog
+        ports:
+            - 7514:514
+            - 7514:514/udp
+        networks:
+            jqueuer_network:
+
+    redis:
+        image: "redis:alpine"
+        networks:
+            jqueuer_network:
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: redis
+        #depends_on:
+            #- syslog_server
+
+    statsd:
+        image: prom/statsd-exporter
+        networks:
+            jqueuer_network:
+        ports:
+            - 9125:9125
+            - 9125:9125/udp
+            - 9102:9102
+            - 9102:9102/udp
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: statsd
+        #depends_on:
+            #- syslog_server
+
+    prometheus:
+        image: prom/prometheus
+        container_name: prometheus
+        volumes:
+            - ./config/prometheus/:/etc/prometheus/
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+        ports:
+            - 9090:9090
+        networks:
+            jqueuer_network:
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: prometheus
+        #depends_on:
+            #- syslog_server
+
+    grafana:
+        image: grafana/grafana
+        ports:
+            - 3000:3000
+        environment:
+            - GF_SECURITY_ADMIN_PASSWORD=jqueuer
+            - GF_USERS_ALLOW_SIGN_UP=false
+        networks:
+            jqueuer_network:
+        volumes:
+            - ./config/grafana/:/etc/grafana/jqueuer
+        command:
+            - /etc/grafana/jqueuer/install.sh &
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: grafana 
+        #depends_on:
+            #- syslog_server
+
+    rabbit:
+        hostname: rabbit
+        image: rabbitmq:latest
+        environment:
+            - RABBITMQ_DEFAULT_USER=admin
+            - RABBITMQ_DEFAULT_PASS=mypass
+            - RABBITMQ_PLUGINS="rabbitmq_management"
+        networks:
+            jqueuer_network:
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: rabbit
+        #depends_on:
+            #- syslog_server
+
+    flower:
+        hostname: flower
+        image: totem/celery-flower-docker
+        ports:
+            - "5555:5555"
+        networks:
+            jqueuer_network:
+        volumes:
+            - /etc/jqueuer/flower/:/opt/celery-flower/jqueuer/
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: flower
+        #depends_on:
+            #- syslog_server
+        command:
+            - /opt/celery-flower/jqueuer/install.sh &
+
+    jqueuer_manager:
+        image: osabuoun/jqueuer_manager
+        #image: jqueuer_manager
+        ports:
+            - "8081:8081"
+        networks:
+            jqueuer_network:
+        volumes:
+            - /usr/bin/docker:/usr/bin/docker
+            - /var/run/docker.sock:/var/run/docker.sock
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:514"
+                #tag: jqueuer_manager
+        #depends_on:
+            #- syslog_server
+
+    jqueuer_agent:
+        image: osabuoun/jqueuer_agent
+        #image: jqueuer_agent
+        networks:
+            jqueuer_network:
+        volumes:
+            - /usr/bin/docker:/usr/bin/docker
+            - /var/run/docker.sock:/var/run/docker.sock
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://localhost:5514"
+                #tag: jqueuer_manager
+        #depends_on:
+            #- syslog_server_jqagent
+
+    flower:
+        hostname: flower
+        image: totem/celery-flower-docker
+        ports:
+            - "5555:5555"
+        networks:
+            jqueuer_network:
+        volumes:
+            - ./config/flower/flowerconfig.py:/opt/celery-flower/flowerconfig.py
+            - ./config/flower/celeryconfig.py:/opt/celery-flower/celeryconfig.py
+        #logging:
+            #driver: syslog
+            #options:
+                #syslog-address: "udp://127.0.0.1:514"
+                #tag: flower
+networks:
+    jqueuer_network:
+        # use the bridge driver, but enable IPv6
+        driver: bridge
+        driver_opts:
+            com.docker.network.enable_ipv6: "true"
+        ipam:
+            driver: default
+            config:
+                - subnet: "192.168.254.0/24"
+                  gateway: "192.168.254.1"
